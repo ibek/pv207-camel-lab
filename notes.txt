@@ -1,0 +1,79 @@
+from("direct:orders")
+    .filter(body().contains("urgent"))
+    .to("http://myAPI/orders/urgent");
+    
+from("direct:orders")
+    .choice()
+        .when(body().contains("error"))
+            .to("http://myAPI/orders/error")
+        .when(body().contains("warning"))
+            .to("http://myAPI/orders/warning")
+        .otherwise()
+            .to("http://myAPI/orders/default");
+            
+from("http://myAPI/orders")
+    .unmarshal().json()
+    .marshal().xml()
+    .to("http://myAPI/orders/xml");
+    
+from("http://myAPI/orders")
+    .split(body())
+    .setHeader("timestamp", simple("${date:now:yyyyMMddHHmmss}"))
+    .to("http://myAPI/orders/timestamp");
+    
+from("http://myAPI/orders")
+    .unmarshal().json()
+    .process(new JqTransformProcessor(".[] | {orderId: .id, customerName: .customer.name}"))
+    .marshal().json()
+    .to("http://myAPI/orders/transformed");
+    
+    from("http://myAPI/customers")
+    .unmarshal().json()
+    .split(body())
+    .setHeader("id", jsonpath("$.id"))
+    .setHeader("name", jsonpath("$.name"))
+    .setHeader("email", jsonpath("$.email"))
+    .to("sql:INSERT INTO customers (id, name, email) VALUES (:#id, :#name, :#email)?dataSource=myDataSource");
+
+<routes xmlns="http://camel.apache.org/schema/spring">
+    <route>
+        <from uri="http://myAPI/customers" />
+        <unmarshal>
+            <json />
+        </unmarshal>
+        <split>
+            <simple>${body}</simple>
+            <marshal>
+                <json />
+            </marshal>
+            <setHeader headerName="id">
+                <jsonpath expression="$.id" />
+            </setHeader>
+            <setHeader headerName="name">
+                <jsonpath expression="$.name" />
+            </setHeader>
+            <setHeader headerName="email">
+                <jsonpath expression="$.email" />
+            </setHeader>
+            <to uri="sql:INSERT INTO customers (id, name, email) VALUES (:#id, :#name, :#email)?dataSource=myDataSource" />
+        </split>
+    </route>
+</routes>
+
+        <to uri="sql:INSERT INTO users (name) VALUES (${body[name]})" />
+
+<bean id="myDataSource" class="org.sqlite.SQLiteDataSource">
+    <property name="url" value="jdbc:sqlite:/path/to/my/database.db" />
+</bean>
+
+CREATE TABLE users (
+   id INTEGER PRIMARY KEY,
+   name TEXT NOT NULL,
+   UNIQUE("name")
+);
+
+https://www.youtube.com/watch?v=Rc7PTKHec6s
+
+curl -X POST http://0.0.0.0:8080/users -H "Content-Type: application/json" -d "{\"name\":\"Ivo\"}"
+curl http://0.0.0.0:8080/users/Ivo
+curl -X POST http://0.0.0.0:8080/order -H "Content-Type: application/json" -d "{\"total\":50}"

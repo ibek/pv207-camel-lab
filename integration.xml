@@ -1,0 +1,117 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- camel-k: language=xml -->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://camel.apache.org/schema/spring"
+        xsi:schemaLocation="
+            http://camel.apache.org/schema/spring
+            https://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <route id="hello">
+        <from uri="platform-http:/hello"/>
+        <setBody>
+            <simple>Hello ${body} from Camel</simple>
+        </setBody>
+        <log message="${body}"/>
+    </route>
+
+    <route id="hijson">
+        <from uri="platform-http:/hijson"/>
+        <setHeader name="Content-Type">
+            <constant>application/json</constant>
+        </setHeader>
+        <unmarshal>
+            <json/>
+        </unmarshal>
+        <setBody>
+            <simple>Hi json ${body[name]} from Camel</simple>
+        </setBody>
+    </route>
+
+    <route id="adduser">
+        <from uri="platform-http:/users?httpMethodRestrict=POST"/>
+        <setHeader name="Content-Type">
+            <constant>application/json</constant>
+        </setHeader>
+        <unmarshal>
+            <json/>
+        </unmarshal>
+        <to uri="direct:addUser" />
+    </route>
+
+    <route id="directAddUser">
+        <from uri="direct:addUser"/>
+        <convertBodyTo type="java.util.Map"/>
+        <log message="${body}"/>
+        <!--<to uri="sql:select * from users" />
+        <split>
+            <simple>${body}</simple>
+            <log message="User: ${body}" />
+        </split>-->
+        <to uri="sql:INSERT INTO users (name) VALUES (:#name)" />
+        <setBody>
+            <simple>User ${body[name]} added successfully</simple>
+        </setBody>
+    </route>
+
+    <route id="getuser">
+        <from uri="platform-http:/users/{user}?httpMethodRestrict=GET"/>
+        <log message="${header.user}"/>
+        <to uri="sql:select * from users where name = :#user?outputType=SelectOne" />
+        <!--<split>
+            <simple>${body}</simple>
+            <log message="User: ${body}" />
+        </split> -->
+        <marshal>
+            <json library="Jackson" />
+        </marshal>
+        <setBody>
+            <jq>
+                del(.id)
+            </jq>
+        </setBody>
+        <log message="${body}"/>
+    </route>
+
+    <route id="filteredusers">
+        <from uri="platform-http:/filteredusers?httpMethodRestrict=POST"/>
+        <setHeader name="Content-Type">
+            <constant>application/json</constant>
+        </setHeader>
+        <unmarshal>
+            <json/>
+        </unmarshal>
+        <filter>
+            <simple>${body[name]} !regex '.*-bot'</simple>
+            <log message="Filtered body: ${body}"/>
+            <to uri="direct:addUser" />
+        </filter>
+        <setBody>
+            <simple>Done</simple>
+        </setBody>
+    </route>
+
+    <route id="processOrder">
+        <from uri="platform-http:/order?httpMethodRestrict=POST"/>
+        <setHeader name="Content-Type">
+            <constant>application/json</constant>
+        </setHeader>
+        <unmarshal>
+            <json/>
+        </unmarshal>
+        <choice>
+            <when>
+                <simple>${body[total]} &lt; 100</simple>
+                <log message="Sending to standard processing department"/>
+            </when>
+            <otherwise>
+                <log message="Sending to expedited processing department"/>
+            </otherwise>
+        </choice>
+        <setBody>
+            <simple>Done</simple>
+        </setBody>
+    </route>
+
+</routes>
