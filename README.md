@@ -1,4 +1,8 @@
-## Camel Lab for PV207
+## PV207 - Camel Lab
+
+for beginners
+
+without the need for programming skills
 
 CREATE TABLE users (
    id INTEGER PRIMARY KEY,
