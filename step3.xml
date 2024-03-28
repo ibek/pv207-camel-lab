@@ -1,0 +1,27 @@
+<camel>
+
+    <route id="process-order">
+        <from uri="platform-http:/order"/>
+        <filter>
+            <jsonpath>$[?(@.payment_method !== 'Credit Card')]</jsonpath>
+            <to uri="direct:other-payment" />
+            <stop/>
+        </filter>
+        <choice>
+            <when>
+                <jsonpath>$[?(@.order_total &lt; 100)]</jsonpath>
+                <to uri="file:tmp/standard?fileName=last-order.json" />
+            </when>
+            <otherwise>
+                <to uri="file:tmp/expedited?fileName=last-order.json" />
+            </otherwise>
+        </choice>
+        <log message="${body}"/>
+    </route>
+
+    <route id="other-payment">
+        <from uri="direct:other-payment" />
+        <log message="Unknown payment method"/>
+    </route>
+
+</camel>

@@ -1,0 +1,9 @@
+<camel>
+
+    <route id="process-order">
+        <from uri="platform-http:/order"/>
+        <to uri="file:tmp?fileName=last-order.json" />
+        <log message="${body}"/>
+    </route>
+
+</camel>
