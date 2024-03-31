@@ -24,12 +24,12 @@ camel version
 
 ### 1. Store the last order
 
-Platform HTTP `/order`
+direct (http) `/order` - generated REST DSL from OpenAPI
 File - `?fileName=tmp/last-order.json`
 
 ```bash
 camel init process-order.xml
-camel run process-order.xml transformers/order_to_processed_order.jslt --dev
+camel run process-order.xml transformers/order_to_processed_order.jslt --dev --open-api apis/orderapi.json
 
 curl -H "Content-Type: application/json; charset=UTF-8" --data-binary @inputs/order.json http://0.0.0.0:8080/order
 ```
