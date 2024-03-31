@@ -1,7 +1,7 @@
 <camel>
 
     <route id="process-order">
-        <from uri="platform-http:/order"/>
+        <from uri="direct:order?exchangePattern=InOut"/>
         <filter>
             <jsonpath>$[?(@.payment_method !== 'Credit Card')]</jsonpath>
             <to uri="direct:other-payment" />

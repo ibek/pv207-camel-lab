@@ -1,7 +1,7 @@
 <camel>
 
     <route id="process-order">
-        <from uri="platform-http:/order"/>
+        <from uri="direct:order?exchangePattern=InOut"/>
         <choice>
             <when>
                 <jsonpath>$[?(@.order_total &lt; 100)]</jsonpath>

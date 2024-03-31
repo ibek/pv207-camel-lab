@@ -1,0 +1,18 @@
+- route:
+    id: route-4010
+    from:
+      id: from-3521
+      uri: direct
+      parameters:
+        exchangePattern: InOut
+        name: order
+      steps:
+        - to:
+            id: to-2597
+            uri: file
+            parameters:
+              directoryName: tmp
+              fileName: last-order.json
+        - log:
+            id: log-1491
+            message: ${body}

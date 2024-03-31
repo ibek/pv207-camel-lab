@@ -1,0 +1,77 @@
+- route:
+    id: route-1317
+    from:
+      id: from-3859
+      uri: direct
+      parameters:
+        exchangePattern: InOut
+        name: order
+      steps:
+        - filter:
+            id: filter-1152
+            steps:
+              - to:
+                  id: to-8599
+                  uri: direct
+                  parameters:
+                    name: other-payment
+              - stop:
+                  id: stop-1770
+            expression:
+              jsonpath:
+                expression: $[?(@.payment_method !== 'Credit Card')]
+        - choice:
+            id: choice-3268
+            otherwise:
+              id: otherwise-1705
+              steps:
+                - to:
+                    id: to-4251
+                    uri: file
+                    parameters:
+                      directoryName: tmp/expedited
+                      fileName: last-order.json
+                - transform:
+                    id: transform-2471
+                    expression:
+                      jq:
+                        expression: .delivery = "premium"
+            when:
+              - id: when-2039
+                steps:
+                  - to:
+                      id: to-1103
+                      uri: file
+                      parameters:
+                        directoryName: tmp/standard
+                        fileName: last-order.json
+                  - transform:
+                      id: transform-1154
+                      expression:
+                        jq:
+                          expression: .delivery = "standard"
+                expression:
+                  jsonpath:
+                    expression: $[?(@.order_total < 100)]
+        - marshal:
+            id: marshal-1733
+            json: {}
+        - to:
+            id: to-4118
+            uri: jslt
+            parameters:
+              resourceUri: transformers/order_to_processed_order.jslt
+        - log:
+            id: log-3374
+            message: ${body}
+- route:
+    id: route-1259
+    from:
+      id: from-2169
+      uri: direct
+      parameters:
+        name: other-payment
+      steps:
+        - log:
+            id: log-3900
+            message: Unknown payment method
