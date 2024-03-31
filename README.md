@@ -25,6 +25,7 @@ camel version
 ### 1. Store the last order
 
 direct (http) `/order` - generated REST DSL from OpenAPI
+
 File - `?fileName=tmp/last-order.json`
 
 ```bash
