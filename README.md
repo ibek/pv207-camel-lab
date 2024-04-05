@@ -28,7 +28,7 @@ apis/orderapi.json is OpenAPI contract definition ( you may easily create own at
 
 direct (http) `/order` - generated REST DSL from OpenAPI maps operationId endpoints from the contract to direct:operationId 
 
-File - `?fileName=tmp/last-order.json`
+File - `tmp/last-order.json`
 
 ```bash
 camel init process-order.xml
