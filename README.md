@@ -24,7 +24,9 @@ camel version
 
 ### 1. Store the last order
 
-direct (http) `/order` - generated REST DSL from OpenAPI
+apis/orderapi.json is OpenAPI contract definition ( you may easily create own at https://openapidesigner.com/ )
+
+direct (http) `/order` - generated REST DSL from OpenAPI maps operationId endpoints from the contract to direct:operationId 
 
 File - `?fileName=tmp/last-order.json`
 
@@ -98,13 +100,10 @@ curl -H "Content-Type: application/json; charset=UTF-8" --data-binary @inputs/or
 
 ### 4. Transform order to processed order json
 
-JSLT Transformation
+Message Translator EIP
 
-- transformers/order_to_processed_order.jslt
-
-Message Translator EIP (Transform)
-
-- JQ - add new delivery property in the routes of the previous Content-based router (`.delivery = "standard"`)
+- JSLT Transformation using transformers/order_to_processed_order.jslt
+- Transform construct with JQ expression - add new delivery property in the routes of the previous Content-based router (`.delivery = "standard" and .delivery = "premium"`)
 - Marshal back to json `<marshal><json /></marshal>`
 
 ```bash
