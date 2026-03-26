@@ -19,7 +19,7 @@ AI service.
 
 | Camel capability | How it is used |
 |---|---|
-| **REST DSL** | `POST /api/start` and `GET /api/events` endpoints |
+| **REST DSL** | `POST /api/start` starts the process and `GET /api/config` exposes UI config |
 | **Content-based routing** | `choice` + `contains` / `regex` for keyword classification; BPMN gateway routes on `intent` |
 | **camel-openai** | Classifies unstructured customer text into structured JSON (intent, urgency, orderId) |
 | **Declarative error handling** | `onException` maps `BusinessBpmnError` → BPMN error, generic `Exception` → job fail/retry |
@@ -30,18 +30,21 @@ AI service.
 ## Architecture
 
 ```
-┌──────────┐  POST /api/start   ┌─────────────────────────────────────┐
+┌──────────┐  GET /api/config    ┌─────────────────────────────────────┐
 │  Browser │ ──────────────────►│  Apache Camel (REST DSL)            │
-│  (UI)    │ ◄──────────────────│                                     │
-│          │  GET /api/events   │  ┌──────────────────────────────┐  │
-└──────────┘  (polling)         │  │  Worker Routes               │  │
-                                │  │  triage-request ◄── openai / │  │
-                                │  │                    keywords  │  │
-                                │  │  handle-cancel               │  │
-                                │  │  handle-refund               │  │
-                                │  │  handle-other                │  │
-                                │  └──────────┬───────────────────┘  │
-                                │             │ completeJob /         │
+│  (UI)    │ ◄──────────────────│  returns Operate base URL           │
+│          │                    │                                     │
+│          │  POST /api/start   │  ┌──────────────────────────────┐  │
+│          │ ──────────────────►│  │  Worker Routes               │  │
+│          │ ◄──────────────────│  │  triage-request              │  │
+│          │  processInstanceKey│  │   ├─ validate                │  │
+└──────────┘                    │  │   ├─ openai or fallback      │  │
+        │                       │  │   └─ completeJob             │  │
+        │ Open Operate link     │  │  handle-cancel               │  │
+        ▼                       │  │  handle-refund               │  │
+┌───────────────────────────┐   │  │  handle-other                │  │
+│ Camunda Operate           │   │  └──────────┬───────────────────┘  │
+└───────────────────────────┘   │             │ completeJob /         │
                                 │             │ throwError / failJob  │
                                 │  ┌──────────▼──────┐              │
                                 │  │  CamundaSaas    │  (bean)      │
@@ -89,7 +92,7 @@ The app starts on **http://localhost:8080**:
 
 - `index.html` is served as a static page (via
   `camel.server.staticEnabled=true`)
-- REST endpoints are available at `/api/start` and `/api/events`
+- REST endpoints are available at `/api/start` and `/api/config`
 - Camunda job workers are registered on startup
 
 ## Using the UI
@@ -101,8 +104,8 @@ The app starts on **http://localhost:8080**:
    - *"I want a refund for order #ORD-99999."*
    - *"Your service is terrible, I waited 3 weeks!"*
 4. Click **Start Process**.
-5. Watch the **Timeline** panel — events appear as Camel processes each
-   job (polled every second).
+5. Copy the returned **process instance key** or use the generated
+   **Operate** link to inspect the instance in Camunda Operate.
 
 ## Test scenarios
 
@@ -144,8 +147,8 @@ Two declarative layers are configured in `workers.camel.yaml` via
 
 | Exception | Camel action | Camunda outcome |
 |---|---|---|
-| `BusinessBpmnError` | `logError` + sets `CamundaErrorCode` / `CamundaErrorMessage`, calls `throwError` | BPMN boundary error event catches it; process follows the error path |
-| Any other `Exception` | `logError` + sets `CamundaErrorMessage`, calls `failJob` | Job retries are decremented; after exhaustion Camunda creates an incident |
+| `BusinessBpmnError` | Sets `CamundaErrorCode` / `CamundaErrorMessage`, calls `throwError` | BPMN boundary error event catches it; process follows the error path |
+| Any other `Exception` | Sets `CamundaErrorMessage`, calls `failJob` | Job retries are decremented; after exhaustion Camunda creates an incident |
 
 Validation errors use the standard `throwException` EIP — no scripting
 needed:
@@ -165,11 +168,10 @@ needed:
 | File | Purpose |
 |---|---|
 | `CamundaSaas.java` | Bean wrapping the Camunda 8 Java client |
-| `EventStore.java` | In-memory event store — single-step `log(kind, message)` API |
 | `BusinessBpmnError.java` | Domain exception → BPMN error (supports `throwException` EIP) |
-| `start-process.camel.yaml` | REST DSL, startup worker registration, API routes |
-| `classify.camel.yaml` | Triage worker route (LLM or keyword-based classification) |
+| `start-process.camel.yaml` | REST DSL, startup worker registration, process start, and UI config routes |
+| `classify.camel.yaml` | Triage worker split into validation, classifier selection, OpenAI, fallback, and completion routes |
 | `workers.camel.yaml` | Handler workers (`handle-cancel`, `handle-refund`, `handle-other`) + declarative error handling |
 | `customer-request-triage.bpmn` | BPMN process model (deploy manually) |
-| `index.html` | Web UI (form + polling timeline) |
+| `index.html` | Web UI (form + process instance key + Operate link) |
 | `application-dev.properties` | Configuration (Camunda + OpenAI) |
