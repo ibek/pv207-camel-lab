@@ -1,0 +1,70 @@
+# REST configuration — served by Camel's built-in platform-http server.
+- restConfiguration:
+    bindingMode: json
+
+# ─── REST API ───────────────────────────────────────────────
+- rest:
+    path: /api
+    post:
+      - path: /start
+        consumes: application/json
+        produces: application/json
+        to: direct:start-process
+    get:
+      - path: /config
+        produces: application/json
+        to: direct:get-ui-config
+
+# ─── Startup: register Camunda job workers ──────────────────
+- route:
+    id: register-workers
+    description: "Register workers"
+    from:
+      uri: "once:register"
+      steps:
+        - bean:
+            description: "Register triage worker"
+            ref: camunda-saas
+            method: "registerWorker('triage-request')"
+        - bean:
+            description: "Register cancel worker"
+            ref: camunda-saas
+            method: "registerWorker('handle-cancel')"
+        - bean:
+            description: "Register refund worker"
+            ref: camunda-saas
+            method: "registerWorker('handle-refund')"
+        - bean:
+            description: "Register other worker"
+            ref: camunda-saas
+            method: "registerWorker('handle-other')"
+        - log:
+            description: "Log registration"
+            message: "All Camunda job workers registered"
+
+# ─── POST /api/start ────────────────────────────────────────
+- route:
+    id: start-process
+    description: "Start process"
+    from:
+      uri: direct:start-process
+      steps:
+        - setHeader:
+            description: "Set BPMN process id in route"
+            name: CamundaBpmnProcessId
+            constant: "customer-request-triage"
+        - bean:
+            description: "Start instance"
+            ref: camunda-saas
+            method: startProcess
+
+# ─── GET /api/config ──────────────────────────────────────────
+- route:
+    id: get-ui-config
+    description: "Get UI config"
+    from:
+      uri: direct:get-ui-config
+      steps:
+        - setBody:
+            description: "Build UI config response"
+            constant: '{"operateBaseUrl":"https://{{camunda.region}}.operate.camunda.io/{{camunda.cluster-id}}/operate/processes/"}'

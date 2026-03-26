@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": ["CANCEL_ORDER", "REFUND", "OTHER"],
+      "description": "The primary customer request intent."
+    },
+    "urgency": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH"],
+      "description": "The urgency level inferred from the customer message."
+    },
+    "summary": {
+      "type": "string",
+      "description": "A brief one-sentence summary of the request."
+    },
+    "orderId": {
+      "type": ["string", "null"],
+      "description": "The customer order identifier when explicitly mentioned; otherwise null."
+    }
+  },
+  "required": ["intent", "urgency", "summary", "orderId"],
+  "additionalProperties": false
+}

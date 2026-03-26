@@ -1,9 +1,0 @@
-<camel>
-
-    <route id="process-order">
-        <from uri="direct:order?exchangePattern=InOut"/>
-        <to uri="file:tmp?fileName=last-order.json" />
-        <log message="${body}"/>
-    </route>
-
-</camel>

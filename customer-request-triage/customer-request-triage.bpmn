@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Web Modeler" exporterVersion="6d56626" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.8.0">
+  <bpmn:process id="customer-request-triage" name="Customer Request Triage" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Request received">
+      <bpmn:outgoing>Flow_StartToTriage</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_Triage" name="Triage Request">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="triage-request" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_StartToTriage</bpmn:incoming>
+      <bpmn:outgoing>Flow_TriageToGateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="Boundary_InvalidRequest" name="Invalid Request" attachedToRef="Task_Triage">
+      <bpmn:outgoing>Flow_ErrorInvalid</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorDef_InvalidRequest" errorRef="Error_InvalidRequest" />
+    </bpmn:boundaryEvent>
+    <bpmn:exclusiveGateway id="Gateway_Intent" name="Route by Intent" default="Flow_Other">
+      <bpmn:incoming>Flow_TriageToGateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Cancel</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Refund</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Other</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_HandleCancel" name="Handle Cancellation">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="handle-cancel" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Cancel</bpmn:incoming>
+      <bpmn:outgoing>Flow_CancelEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_HandleRefund" name="Handle Refund">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="handle-refund" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Refund</bpmn:incoming>
+      <bpmn:outgoing>Flow_RefundEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="Boundary_MissingOrderId" name="Missing Order ID" attachedToRef="Task_HandleRefund">
+      <bpmn:outgoing>Flow_ErrorMissing</bpmn:outgoing>
+      <bpmn:errorEventDefinition id="ErrorDef_MissingOrderId" errorRef="Error_MissingOrderId" />
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="Task_HandleOther" name="Handle Other">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="handle-other" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Other</bpmn:incoming>
+      <bpmn:outgoing>Flow_OtherEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Cancel" name="Cancelled">
+      <bpmn:incoming>Flow_CancelEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_Refund" name="Refunded">
+      <bpmn:incoming>Flow_RefundEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_Other" name="Forwarded">
+      <bpmn:incoming>Flow_OtherEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_InvalidRequest" name="Invalid Request">
+      <bpmn:incoming>Flow_ErrorInvalid</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_MissingOrderId" name="Missing Order ID">
+      <bpmn:incoming>Flow_ErrorMissing</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_StartToTriage" sourceRef="StartEvent_1" targetRef="Task_Triage" />
+    <bpmn:sequenceFlow id="Flow_TriageToGateway" sourceRef="Task_Triage" targetRef="Gateway_Intent" />
+    <bpmn:sequenceFlow id="Flow_Cancel" name="Cancel Order" sourceRef="Gateway_Intent" targetRef="Task_HandleCancel">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= intent = "CANCEL_ORDER"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Refund" name="Refund" sourceRef="Gateway_Intent" targetRef="Task_HandleRefund">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">= intent = "REFUND"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Other" name="Other" sourceRef="Gateway_Intent" targetRef="Task_HandleOther" />
+    <bpmn:sequenceFlow id="Flow_CancelEnd" sourceRef="Task_HandleCancel" targetRef="End_Cancel" />
+    <bpmn:sequenceFlow id="Flow_RefundEnd" sourceRef="Task_HandleRefund" targetRef="End_Refund" />
+    <bpmn:sequenceFlow id="Flow_OtherEnd" sourceRef="Task_HandleOther" targetRef="End_Other" />
+    <bpmn:sequenceFlow id="Flow_ErrorInvalid" sourceRef="Boundary_InvalidRequest" targetRef="End_InvalidRequest" />
+    <bpmn:sequenceFlow id="Flow_ErrorMissing" sourceRef="Boundary_MissingOrderId" targetRef="End_MissingOrderId" />
+  </bpmn:process>
+  <bpmn:error id="Error_InvalidRequest" name="Invalid Request" errorCode="INVALID_REQUEST" />
+  <bpmn:error id="Error_MissingOrderId" name="Missing Order ID" errorCode="MISSING_ORDER_ID" />
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="customer-request-triage">
+      <bpmndi:BPMNShape id="StartEvent_1_di" bpmnElement="StartEvent_1">
+        <dc:Bounds x="162" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Triage_di" bpmnElement="Task_Triage">
+        <dc:Bounds x="270" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_Intent_di" bpmnElement="Gateway_Intent" isMarkerVisible="true">
+        <dc:Bounds x="455" y="335" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="492" y="393" width="75" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HandleRefund_di" bpmnElement="Task_HandleRefund">
+        <dc:Bounds x="600" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Refund_di" bpmnElement="End_Refund">
+        <dc:Bounds x="762" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_InvalidRequest_di" bpmnElement="End_InvalidRequest">
+        <dc:Bounds x="302" y="460" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_MissingOrderId_di" bpmnElement="End_MissingOrderId">
+        <dc:Bounds x="632" y="460" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="609" y="496" width="83" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HandleOther_di" bpmnElement="Task_HandleOther">
+        <dc:Bounds x="600" y="550" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Other_di" bpmnElement="End_Other">
+        <dc:Bounds x="762" y="572" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="754" y="608" width="53" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_HandleCancel_di" bpmnElement="Task_HandleCancel">
+        <dc:Bounds x="600" y="190" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Cancel_di" bpmnElement="End_Cancel">
+        <dc:Bounds x="762" y="212" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="756" y="248" width="49" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_MissingOrderId_di" bpmnElement="Boundary_MissingOrderId">
+        <dc:Bounds x="632" y="382" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Boundary_InvalidRequest_di" bpmnElement="Boundary_InvalidRequest">
+        <dc:Bounds x="302" y="382" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_StartToTriage_di" bpmnElement="Flow_StartToTriage">
+        <di:waypoint x="198" y="360" />
+        <di:waypoint x="270" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_TriageToGateway_di" bpmnElement="Flow_TriageToGateway">
+        <di:waypoint x="370" y="360" />
+        <di:waypoint x="455" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Cancel_di" bpmnElement="Flow_Cancel">
+        <di:waypoint x="480" y="335" />
+        <di:waypoint x="480" y="230" />
+        <di:waypoint x="600" y="230" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="497" y="213" width="66" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Refund_di" bpmnElement="Flow_Refund">
+        <di:waypoint x="505" y="360" />
+        <di:waypoint x="600" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Other_di" bpmnElement="Flow_Other">
+        <di:waypoint x="480" y="385" />
+        <di:waypoint x="480" y="590" />
+        <di:waypoint x="600" y="590" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="539" y="563" width="28" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_RefundEnd_di" bpmnElement="Flow_RefundEnd">
+        <di:waypoint x="700" y="360" />
+        <di:waypoint x="762" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ErrorInvalid_di" bpmnElement="Flow_ErrorInvalid">
+        <di:waypoint x="320" y="418" />
+        <di:waypoint x="320" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_ErrorMissing_di" bpmnElement="Flow_ErrorMissing">
+        <di:waypoint x="650" y="418" />
+        <di:waypoint x="650" y="460" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_OtherEnd_di" bpmnElement="Flow_OtherEnd">
+        <di:waypoint x="700" y="590" />
+        <di:waypoint x="762" y="590" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_CancelEnd_di" bpmnElement="Flow_CancelEnd">
+        <di:waypoint x="700" y="230" />
+        <di:waypoint x="762" y="230" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

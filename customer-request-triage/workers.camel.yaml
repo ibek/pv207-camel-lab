@@ -1,0 +1,120 @@
+# ─── Declarative error handling for all Camunda worker routes ───
+#
+# BusinessBpmnError  →  BPMN error (throwError)   — business-domain fault
+# any other Exception →  job fail  (failJob)       — transient / technical fault
+#
+- routeConfiguration:
+    id: worker-error-handling
+    onException:
+      - onException:
+          exception:
+            - BusinessBpmnError
+          handled:
+            constant: "true"
+          steps:
+            - setHeader:
+                name: CamundaErrorCode
+                simple: "${exception.errorCode}"
+            - setHeader:
+                name: CamundaErrorMessage
+                simple: "${exception.message}"
+            - bean:
+                ref: camunda-saas
+                method: throwError
+      - onException:
+          exception:
+            - java.lang.Exception
+          handled:
+            constant: "true"
+          steps:
+            - setHeader:
+                name: CamundaErrorMessage
+                simple: "${exception.message}"
+            - bean:
+                ref: camunda-saas
+                method: failJob
+
+# ─── handle-cancel ──────────────────────────────────────────
+- route:
+    id: worker-handle-cancel
+    description: "Handle cancel"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "seda:worker-handle-cancel"
+      steps:
+        - log:
+            description: "Log cancel"
+            message: "Cancelling order ${body[orderId]}"
+        - delay:
+            description: "Wait briefly"
+            constant: 500
+        - setBody:
+            description: "Build result"
+            constant: '{"cancellationStatus":"CONFIRMED"}'
+        - unmarshal:
+            description: "Parse result"
+            json: {}
+        - bean:
+            description: "Complete job"
+            ref: camunda-saas
+            method: completeJob
+
+# ─── handle-refund ──────────────────────────────────────────
+- route:
+    id: worker-handle-refund
+    description: "Handle refund"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "seda:worker-handle-refund"
+      steps:
+        - choice:
+            description: "Validate order"
+            when:
+              - simple: "${body[orderId]} == null || ${body[orderId]} == ''"
+                description: "Handle missing order"
+                steps:
+                  - throwException:
+                      description: "Throw BPMN error"
+                      exceptionType: BusinessBpmnError
+                      message: "MISSING_ORDER_ID: Cannot process refund without an order ID"
+        - log:
+            description: "Log refund"
+            message: "Initiating refund for order ${body[orderId]}"
+        - delay:
+            description: "Wait briefly"
+            constant: 800
+        - setBody:
+            description: "Build result"
+            constant: '{"refundStatus":"INITIATED"}'
+        - unmarshal:
+            description: "Parse result"
+            json: {}
+        - bean:
+            description: "Complete job"
+            ref: camunda-saas
+            method: completeJob
+
+# ─── handle-other ───────────────────────────────────────────
+- route:
+    id: worker-handle-other
+    description: "Handle other"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "seda:worker-handle-other"
+      steps:
+        - log:
+            description: "Log escalation"
+            message: "No automated handler — forwarding to human agent"
+        - delay:
+            description: "Wait briefly"
+            constant: 300
+        - setBody:
+            description: "Build result"
+            constant: '{"escalationStatus":"FORWARDED_TO_AGENT"}'
+        - unmarshal:
+            description: "Parse result"
+            json: {}
+        - bean:
+            description: "Complete job"
+            ref: camunda-saas
+            method: completeJob

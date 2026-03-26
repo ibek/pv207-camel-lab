@@ -1,0 +1,158 @@
+# Triage-request worker — classifies a free-text customer message.
+# Uses camel-openai when OPENAI_API_KEY is set; falls back to
+# keyword-based classification otherwise.
+
+# Entry route for activated Camunda jobs.
+- route:
+    id: worker-triage-request
+    description: "Classify request"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "seda:worker-triage-request"
+      steps:
+        - to:
+            description: "Validate request"
+            uri: "direct:triage-validate"
+        - to:
+            description: "Classify request"
+            uri: "direct:triage-classify"
+        - to:
+            description: "Complete Camunda job"
+            uri: "direct:triage-complete"
+
+# Validation route.
+- route:
+    id: triage-validate
+    description: "Validate triage input"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "direct:triage-validate"
+      steps:
+        - choice:
+            description: "Validate message"
+            when:
+              - simple: "${body[customerMessage]} == null || ${body[customerMessage]} == ''"
+                description: "Handle missing message"
+                steps:
+                  - throwException:
+                      description: "Throw BPMN error"
+                      exceptionType: BusinessBpmnError
+                      message: "INVALID_REQUEST: Customer message is required for triage"
+
+# Classifier selection route.
+- route:
+    id: triage-classify
+    description: "Select classifier"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "direct:triage-classify"
+      steps:
+        - choice:
+            description: "Choose classifier"
+            when:
+              - simple: "{{openai.enabled}} == true"
+                description: "Use OpenAI"
+                steps:
+                  - to:
+                      description: "Use OpenAI classifier"
+                      uri: "direct:triage-classify-openai"
+            otherwise:
+              steps:
+                - to:
+                    description: "Use keyword fallback classifier"
+                    uri: "direct:triage-classify-fallback"
+
+# OpenAI classification route.
+- route:
+    id: triage-classify-openai
+    description: "Classify via OpenAI"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "direct:triage-classify-openai"
+      steps:
+        - log:
+            description: "Log classification"
+            message: "Classifying via OpenAI"
+        - setHeader:
+            description: "Set system prompt"
+            name: "CamelOpenAISystemMessage"
+            simple: >
+              You are a customer service triage agent. Classify a customer request into a structured JSON result.
+              Extract orderId only when an order identifier is explicitly present; otherwise return null.
+        - setBody:
+            description: "Build prompt body"
+            simple: |
+              Customer Tier: ${body[customerTier]}
+              Customer Message: ${body[customerMessage]}
+        - to:
+            description: "Call OpenAI"
+            uri: "openai:chat-completion"
+            parameters:
+              temperature: 0.1
+              jsonSchema: "resource:classpath:triage-classification.schema.json"
+        - to:
+            description: "Validate schema"
+            uri: "json-validator:triage-classification.schema.json"
+        - unmarshal:
+            description: "Parse response"
+            json: {}
+
+# Keyword fallback classification route.
+- route:
+    id: triage-classify-fallback
+    description: "Classify via keyword fallback"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "direct:triage-classify-fallback"
+      steps:
+        - log:
+            description: "Log fallback"
+            message: "OpenAI not configured — using keyword-based classification"
+        - setHeader:
+            description: "Set default intent"
+            name: intent
+            constant: "OTHER"
+        - setHeader:
+            description: "Set default urgency"
+            name: urgency
+            constant: "MEDIUM"
+        - choice:
+            description: "Match keywords"
+            when:
+              - simple: "${body[customerMessage]} contains 'cancel'"
+                description: "Match cancel"
+                steps:
+                  - setHeader:
+                      description: "Set cancel intent"
+                      name: intent
+                      constant: "CANCEL_ORDER"
+              - simple: "${body[customerMessage]} contains 'refund' || ${body[customerMessage]} contains 'money back'"
+                description: "Match refund"
+                steps:
+                  - setHeader:
+                      description: "Set refund intent"
+                      name: intent
+                      constant: "REFUND"
+                  - setHeader:
+                      description: "Set high urgency"
+                      name: urgency
+                      constant: "HIGH"
+        - setBody:
+            description: "Build fallback result"
+            simple: '{"intent":"${header.intent}","urgency":"${header.urgency}","summary":"Keyword-based classification","orderId":null}'
+        - unmarshal:
+            description: "Parse fallback"
+            json: {}
+
+# Completion route.
+- route:
+    id: triage-complete
+    description: "Complete triage job"
+    routeConfigurationId: worker-error-handling
+    from:
+      uri: "direct:triage-complete"
+      steps:
+        - bean:
+            description: "Complete job"
+            ref: camunda-saas
+            method: completeJob
