@@ -22,10 +22,10 @@ AI service.
 | **REST DSL** | `POST /api/start` starts the process and `GET /api/config` exposes UI config |
 | **Content-based routing** | `choice` + `contains` / `regex` for keyword classification; BPMN gateway routes on `intent` |
 | **camel-openai** | Classifies unstructured customer text into structured JSON (intent, urgency, orderId) |
-| **Declarative error handling** | `onException` maps `BusinessBpmnError` → BPMN error, generic `Exception` → job fail/retry |
+| **Auto-complete / auto-fail** | Worker consumer auto-completes jobs on success, auto-fails on exception — no manual `completeJob`/`failJob` needed |
+| **Declarative error handling** | `onException` maps `BusinessBpmnError` → BPMN error via `throwError` |
 | **throwException EIP** | Validates input and throws business errors — no scripting needed |
 | **setBody + unmarshal** | Builds JSON output variables from headers, converts to Map for Camunda |
-| **Bean integration** | `CamundaSaas.java` wraps the Camunda Java client as a `@BindToRegistry` bean |
 
 ## Architecture
 
@@ -38,23 +38,22 @@ AI service.
 │          │ ──────────────────►│  │  Worker Routes               │  │
 │          │ ◄──────────────────│  │  triage-request              │  │
 │          │  processInstanceKey│  │   ├─ validate                │  │
-└──────────┘                    │  │   ├─ openai or fallback      │  │
-        │                       │  │   └─ completeJob             │  │
-        │ Open Operate link     │  │  handle-cancel               │  │
-        ▼                       │  │  handle-refund               │  │
-┌───────────────────────────┐   │  │  handle-other                │  │
-│ Camunda Operate           │   │  └──────────┬───────────────────┘  │
-└───────────────────────────┘   │             │ completeJob /         │
-                                │             │ throwError / failJob  │
+└──────────┘                    │  │   └─ openai or fallback      │  │
+        │                       │  │  handle-cancel               │  │
+        │ Open Operate link     │  │  handle-refund               │  │
+        ▼                       │  │  handle-other                │  │
+┌───────────────────────────┐   │  └──────────┬───────────────────┘  │
+│ Camunda Operate           │   │             │ auto-complete /       │
+└───────────────────────────┘   │             │ auto-fail /           │
+                                │             │ throwError            │
                                 │  ┌──────────▼──────┐              │
-                                │  │  CamundaSaas    │  (bean)      │
-                                │  │  Java client    │              │
+                                │  │ camel-camunda   │              │
+                                │  │ (Camunda client)│              │
                                 └──┴─────────────────┴──────────────┘
                                           │
                                           ▼
                                  ┌─────────────────┐
                                  │ Camunda 8 SaaS  │
-                                 │ (Zeebe engine)  │
                                  └─────────────────┘
 ```
 
@@ -142,13 +141,38 @@ The app starts on **http://localhost:8080**:
 
 ## Error handling
 
-Two declarative layers are configured in `workers.camel.yaml` via
-`routeConfiguration`:
+The `camel-camunda` worker consumer provides automatic job lifecycle
+management:
 
-| Exception | Camel action | Camunda outcome |
-|---|---|---|
-| `BusinessBpmnError` | Sets `CamundaErrorCode` / `CamundaErrorMessage`, calls `throwError` | BPMN boundary error event catches it; process follows the error path |
-| Any other `Exception` | Sets `CamundaErrorMessage`, calls `failJob` | Job retries are decremented; after exhaustion Camunda creates an incident |
+| Outcome | What happens |
+|---|---|
+| Route completes successfully | Job is **auto-completed**. If the body is a `Map`, entries are passed as output variables. |
+| Route throws any `Exception` | Job is **auto-failed** with retries decremented by one. After exhaustion Camunda creates an incident. |
+| Route calls `throwError` explicitly | Job is handled via a BPMN error event; auto-complete is skipped. |
+
+A single `onException` in `workers.camel.yaml` maps `BusinessBpmnError`
+to the `throwError` producer for BPMN error handling:
+
+```yaml
+- routeConfiguration:
+    id: worker-error-handling
+    onException:
+      - onException:
+          exception:
+            - BusinessBpmnError
+          handled:
+            constant:
+              expression: "true"
+          steps:
+            - setHeader:
+                name: CamelCamundaErrorCode
+                simple: ${exception.errorCode}
+            - setHeader:
+                name: CamelCamundaErrorMessage
+                simple: ${exception.message}
+            - to:
+                uri: camunda://throwError
+```
 
 Validation errors use the standard `throwException` EIP — no scripting
 needed:
@@ -167,11 +191,10 @@ needed:
 
 | File | Purpose |
 |---|---|
-| `CamundaSaas.java` | Bean wrapping the Camunda 8 Java client |
 | `BusinessBpmnError.java` | Domain exception → BPMN error (supports `throwException` EIP) |
-| `start-process.camel.yaml` | REST DSL, startup worker registration, process start, and UI config routes |
-| `classify.camel.yaml` | Triage worker split into validation, classifier selection, OpenAI, fallback, and completion routes |
-| `workers.camel.yaml` | Handler workers (`handle-cancel`, `handle-refund`, `handle-other`) + declarative error handling |
+| `start-process.camel.yaml` | REST DSL, process start, and UI config routes |
+| `classify.camel.yaml` | Triage worker split into validation, classifier selection, OpenAI, and fallback routes |
+| `workers.camel.yaml` | Handler workers (`handle-cancel`, `handle-refund`, `handle-other`) + BPMN error handling |
 | `customer-request-triage.bpmn` | BPMN process model (deploy manually) |
 | `index.html` | Web UI (form + process instance key + Operate link) |
 | `application-dev.properties` | Configuration (Camunda + OpenAI) |

@@ -1,8 +1,26 @@
+
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+
+#      http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
 # ─── Declarative error handling for all Camunda worker routes ───
-#
-# BusinessBpmnError  →  BPMN error (throwError)   — business-domain fault
-# any other Exception →  job fail  (failJob)       — transient / technical fault
-#
+
+# The worker consumer auto-completes jobs on success and auto-fails on
+# exception. The only explicit handling needed is mapping
+# BusinessBpmnError → BPMN error via the throwError producer.
+
 - routeConfiguration:
     id: worker-error-handling
     onException:
@@ -10,111 +28,90 @@
           exception:
             - BusinessBpmnError
           handled:
-            constant: "true"
+            constant:
+              expression: "true"
           steps:
             - setHeader:
-                name: CamundaErrorCode
-                simple: "${exception.errorCode}"
+                name: CamelCamundaErrorCode
+                simple: ${exception.errorCode}
             - setHeader:
-                name: CamundaErrorMessage
-                simple: "${exception.message}"
-            - bean:
-                ref: camunda-saas
-                method: throwError
-      - onException:
-          exception:
-            - java.lang.Exception
-          handled:
-            constant: "true"
-          steps:
-            - setHeader:
-                name: CamundaErrorMessage
-                simple: "${exception.message}"
-            - bean:
-                ref: camunda-saas
-                method: failJob
-
-# ─── handle-cancel ──────────────────────────────────────────
+                name: CamelCamundaErrorMessage
+                simple: ${exception.message}
+            - to:
+                uri: camunda://throwError
 - route:
     id: worker-handle-cancel
-    description: "Handle cancel"
+    description: Handle cancel
     routeConfigurationId: worker-error-handling
     from:
-      uri: "seda:worker-handle-cancel"
+      uri: camunda:worker?jobType=handle-cancel
       steps:
-        - log:
-            description: "Log cancel"
-            message: "Cancelling order ${body[orderId]}"
-        - delay:
-            description: "Wait briefly"
-            constant: 500
         - setBody:
-            description: "Build result"
+            description: Extract process variables
+            simple: ${body.variables}
+        - log:
+            description: Log cancel
+            message: Cancelling order ${body[orderId]}
+        - delay:
+            description: Wait briefly
+            constant: "500"
+        - setBody:
+            description: Build result
             constant: '{"cancellationStatus":"CONFIRMED"}'
         - unmarshal:
-            description: "Parse result"
+            description: Convert to Map for output variables
             json: {}
-        - bean:
-            description: "Complete job"
-            ref: camunda-saas
-            method: completeJob
-
-# ─── handle-refund ──────────────────────────────────────────
 - route:
     id: worker-handle-refund
-    description: "Handle refund"
+    description: Handle refund
     routeConfigurationId: worker-error-handling
     from:
-      uri: "seda:worker-handle-refund"
+      uri: camunda:worker?jobType=handle-refund
       steps:
+        - setBody:
+            description: Extract process variables
+            simple: ${body.variables}
         - choice:
-            description: "Validate order"
+            description: Validate order
             when:
-              - simple: "${body[orderId]} == null || ${body[orderId]} == ''"
-                description: "Handle missing order"
+              - simple: ${body[orderId]} == null || ${body[orderId]} == ''
+                description: Handle missing order
                 steps:
                   - throwException:
-                      description: "Throw BPMN error"
+                      description: Throw BPMN error
                       exceptionType: BusinessBpmnError
                       message: "MISSING_ORDER_ID: Cannot process refund without an order ID"
         - log:
-            description: "Log refund"
-            message: "Initiating refund for order ${body[orderId]}"
+            description: Log refund
+            message: Initiating refund for order ${body[orderId]}
         - delay:
-            description: "Wait briefly"
-            constant: 800
+            description: Wait briefly
+            constant: "800"
         - setBody:
-            description: "Build result"
+            description: Build result
             constant: '{"refundStatus":"INITIATED"}'
         - unmarshal:
-            description: "Parse result"
+            description: Convert to Map for output variables
             json: {}
-        - bean:
-            description: "Complete job"
-            ref: camunda-saas
-            method: completeJob
-
-# ─── handle-other ───────────────────────────────────────────
 - route:
     id: worker-handle-other
-    description: "Handle other"
+    description: Handle other
     routeConfigurationId: worker-error-handling
     from:
-      uri: "seda:worker-handle-other"
+      uri: camunda:worker?jobType=handle-other
       steps:
-        - log:
-            description: "Log escalation"
-            message: "No automated handler — forwarding to human agent"
-        - delay:
-            description: "Wait briefly"
-            constant: 300
         - setBody:
-            description: "Build result"
+            description: Extract process variables
+            simple: ${body.variables}
+        - log:
+            description: Log escalation
+            message: No automated handler — forwarding to human agent
+        - delay:
+            description: Wait briefly
+            constant: "300"
+        - setBody:
+            description: Build result
             constant: '{"escalationStatus":"FORWARDED_TO_AGENT"}'
         - unmarshal:
-            description: "Parse result"
+            description: Convert to Map for output variables
             json: {}
-        - bean:
-            description: "Complete job"
-            ref: camunda-saas
-            method: completeJob

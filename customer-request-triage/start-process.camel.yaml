@@ -1,3 +1,20 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # REST configuration — served by Camel's built-in platform-http server.
 - restConfiguration:
     bindingMode: json
@@ -15,33 +32,6 @@
         produces: application/json
         to: direct:get-ui-config
 
-# ─── Startup: register Camunda job workers ──────────────────
-- route:
-    id: register-workers
-    description: "Register workers"
-    from:
-      uri: "once:register"
-      steps:
-        - bean:
-            description: "Register triage worker"
-            ref: camunda-saas
-            method: "registerWorker('triage-request')"
-        - bean:
-            description: "Register cancel worker"
-            ref: camunda-saas
-            method: "registerWorker('handle-cancel')"
-        - bean:
-            description: "Register refund worker"
-            ref: camunda-saas
-            method: "registerWorker('handle-refund')"
-        - bean:
-            description: "Register other worker"
-            ref: camunda-saas
-            method: "registerWorker('handle-other')"
-        - log:
-            description: "Log registration"
-            message: "All Camunda job workers registered"
-
 # ─── POST /api/start ────────────────────────────────────────
 - route:
     id: start-process
@@ -49,14 +39,13 @@
     from:
       uri: direct:start-process
       steps:
-        - setHeader:
-            description: "Set BPMN process id in route"
-            name: CamundaBpmnProcessId
-            constant: "customer-request-triage"
-        - bean:
-            description: "Start instance"
-            ref: camunda-saas
-            method: startProcess
+        - marshal:
+            json: {}
+        - setBody:
+            simple: '{"process_id":"customer-request-triage","variables":${body}}'
+        - to:
+            description: "Start Camunda process instance"
+            uri: "camunda://startProcess"
 
 # ─── GET /api/config ──────────────────────────────────────────
 - route:

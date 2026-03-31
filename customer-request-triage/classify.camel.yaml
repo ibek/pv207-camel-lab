@@ -1,3 +1,20 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Triage-request worker — classifies a free-text customer message.
 # Uses camel-openai when OPENAI_API_KEY is set; falls back to
 # keyword-based classification otherwise.
@@ -8,17 +25,17 @@
     description: "Classify request"
     routeConfigurationId: worker-error-handling
     from:
-      uri: "seda:worker-triage-request"
+      uri: "camunda:worker?jobType=triage-request"
       steps:
+        - setBody:
+            description: "Extract process variables"
+            simple: "${body.variables}"
         - to:
             description: "Validate request"
             uri: "direct:triage-validate"
         - to:
             description: "Classify request"
             uri: "direct:triage-classify"
-        - to:
-            description: "Complete Camunda job"
-            uri: "direct:triage-complete"
 
 # Validation route.
 - route:
@@ -143,16 +160,3 @@
         - unmarshal:
             description: "Parse fallback"
             json: {}
-
-# Completion route.
-- route:
-    id: triage-complete
-    description: "Complete triage job"
-    routeConfigurationId: worker-error-handling
-    from:
-      uri: "direct:triage-complete"
-      steps:
-        - bean:
-            description: "Complete job"
-            ref: camunda-saas
-            method: completeJob
