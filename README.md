@@ -135,6 +135,10 @@ Deploy it **before** starting the Camel app:
 ## Run the app
 
 ```bash
+export CAMUNDA_CLUSTER_ID=
+export CAMUNDA_REGION=
+export CAMUNDA_CLIENT_ID=
+export CAMUNDA_CLIENT_SECRET=
 camel run --source-dir=customer-request-triage
 ```
 
