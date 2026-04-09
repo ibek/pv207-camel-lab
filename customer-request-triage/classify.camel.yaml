@@ -16,8 +16,8 @@
 #
 
 # Triage-request worker — classifies a free-text customer message.
-# Uses camel-openai when OPENAI_API_KEY is set; falls back to
-# keyword-based classification otherwise.
+# Uses camel-openai when OPENAI_ENABLED=true; falls back to
+# keyword-based classification otherwise (the default).
 
 # Entry route for activated Camunda jobs.
 - route:
@@ -27,12 +27,25 @@
     from:
       uri: "camunda:worker?jobType=triage-request"
       steps:
+        - setHeader:
+            name: processInstanceKey
+            simple: "${body.processInstanceKey}"
         - setBody:
             description: "Extract process variables"
             simple: "${body.variables}"
+        - log:
+            message: "[${header.processInstanceKey}] Triage started for request ${body[requestId]}"
         - to:
             description: "Validate request"
             uri: "direct:triage-validate"
+        - choice:
+            description: "Simulate technical failure"
+            when:
+              - simple: "${body[customerMessage]} contains '__FAIL__'"
+                steps:
+                  - throwException:
+                      exceptionType: java.lang.RuntimeException
+                      message: "Simulated technical failure: classification service timed out"
         - to:
             description: "Classify request"
             uri: "direct:triage-classify"
@@ -89,7 +102,7 @@
       steps:
         - log:
             description: "Log classification"
-            message: "Classifying via OpenAI"
+            message: "[${header.processInstanceKey}] Classifying via OpenAI"
         - setHeader:
             description: "Set system prompt"
             name: "CamelOpenAISystemMessage"
@@ -124,7 +137,7 @@
       steps:
         - log:
             description: "Log fallback"
-            message: "OpenAI not configured — using keyword-based classification"
+            message: "[${header.processInstanceKey}] OpenAI not configured — using keyword-based classification"
         - setHeader:
             description: "Set default intent"
             name: intent

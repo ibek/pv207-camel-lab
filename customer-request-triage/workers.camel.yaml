@@ -46,12 +46,15 @@
     from:
       uri: camunda:worker?jobType=handle-cancel
       steps:
+        - setHeader:
+            name: processInstanceKey
+            simple: "${body.processInstanceKey}"
         - setBody:
             description: Extract process variables
             simple: ${body.variables}
         - log:
             description: Log cancel
-            message: Cancelling order ${body[orderId]}
+            message: "[${header.processInstanceKey}] Cancelling order ${body[orderId]}"
         - delay:
             description: Wait briefly
             constant: "500"
@@ -68,6 +71,9 @@
     from:
       uri: camunda:worker?jobType=handle-refund
       steps:
+        - setHeader:
+            name: processInstanceKey
+            simple: "${body.processInstanceKey}"
         - setBody:
             description: Extract process variables
             simple: ${body.variables}
@@ -83,7 +89,7 @@
                       message: "MISSING_ORDER_ID: Cannot process refund without an order ID"
         - log:
             description: Log refund
-            message: Initiating refund for order ${body[orderId]}
+            message: "[${header.processInstanceKey}] Initiating refund for order ${body[orderId]}"
         - delay:
             description: Wait briefly
             constant: "800"
@@ -100,12 +106,15 @@
     from:
       uri: camunda:worker?jobType=handle-other
       steps:
+        - setHeader:
+            name: processInstanceKey
+            simple: "${body.processInstanceKey}"
         - setBody:
             description: Extract process variables
             simple: ${body.variables}
         - log:
             description: Log escalation
-            message: No automated handler — forwarding to human agent
+            message: "[${header.processInstanceKey}] No automated handler — forwarding to human agent"
         - delay:
             description: Wait briefly
             constant: "300"

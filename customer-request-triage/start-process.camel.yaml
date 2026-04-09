@@ -46,6 +46,8 @@
         - to:
             description: "Start Camunda process instance"
             uri: "camunda://startProcess"
+        - log:
+            message: "Started process instance ${body[process_instance_key]}"
 
 # ─── GET /api/config ──────────────────────────────────────────
 - route:

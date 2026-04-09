@@ -139,7 +139,9 @@
     submitBtn.disabled = true;
     submitBtn.textContent = 'Starting\u2026';
 
+    const requestId = 'req-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
     const body = {
+      requestId: requestId,
       customerTier: document.getElementById('customerTier').value,
       customerMessage: document.getElementById('customerMessage').value
     };
